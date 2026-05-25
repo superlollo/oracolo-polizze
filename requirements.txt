@@ -1,0 +1,7 @@
+llama-index
+llama-index-llms-anthropic
+llama-index-embeddings-openai
+python-dotenv
+pypdf
+pymupdf
+streamlit
