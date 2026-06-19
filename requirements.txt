@@ -5,3 +5,8 @@ python-dotenv
 pypdf
 pymupdf
 streamlit
+pyyaml
+bcrypt
+sqlalchemy
+supabase
+llama-index-vector-stores-supabase

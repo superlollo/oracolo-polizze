@@ -1,11 +1,21 @@
+# Secrets
 .env
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 venv/
 *.egg-info/
 dist/
 build/
-src/static/
-documents/
+
+# Dati runtime — ephemeral su Render, usa disco persistente se necessario
 storage/
+documents/
+src/static/
+logs/
+
+# Credenziali legacy (migrate a Supabase, ma per sicurezza non versionare)
+users.yaml
