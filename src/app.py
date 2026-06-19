@@ -268,6 +268,13 @@ st.markdown(
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    .stDeployButton {display: none;}
+    [data-testid="stStatusWidget"] {visibility: hidden;}
+    [data-testid="stToolbar"] {visibility: hidden; display: none;}
+    .stAppDeployButton {display: none;}
+    .viewerBadge_container__1QSob {display: none;}
+    .styles_viewerBadge__1yB5_ {display: none;}
+    a[href*="streamlit.io"] {display: none !important;}
     </style>
     """,
     unsafe_allow_html=True,
