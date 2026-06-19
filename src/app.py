@@ -9,6 +9,8 @@ import bcrypt
 import pymupdf as fitz
 import sqlalchemy as sa
 import streamlit as st
+import streamlit.components.v1 as _components
+from PIL import Image as _PILImage
 from dotenv import load_dotenv
 from llama_index.core import Settings, VectorStoreIndex
 from llama_index.core.node_parser import SentenceSplitter
@@ -257,7 +259,7 @@ def highlight_citations(text: str) -> str:
 
 st.set_page_config(
     page_title="Oracolo delle Polizze",
-    page_icon="🔮",
+    page_icon=_PILImage.open(Path(__file__).parent / "static" / "logo.png"),
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -268,10 +270,21 @@ st.markdown(
     /* ── Nascondi elementi Streamlit ── */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    /* header: nascosto ma overflow visibile per il pulsante espandi sidebar */
+    header {visibility: hidden; height: 0; overflow: visible;}
+    /* stToolbar: solo invisible, NON display:none (altrimenti stExpandSidebarButton scompare) */
+    [data-testid="stToolbar"] {visibility: hidden;}
+    /* Pulsante espandi sidebar: ripristinato e ancorato fixed in alto a sinistra */
+    [data-testid="stExpandSidebarButton"] {
+        visibility: visible !important;
+        display: flex !important;
+        position: fixed !important;
+        top: 0.4rem !important;
+        left: 0.6rem !important;
+        z-index: 999999 !important;
+    }
     .stDeployButton {display: none;}
     [data-testid="stStatusWidget"] {visibility: hidden;}
-    [data-testid="stToolbar"] {visibility: hidden; display: none;}
     .stAppDeployButton {display: none;}
     .viewerBadge_container__1QSob {display: none;}
     .styles_viewerBadge__1yB5_ {display: none;}
@@ -298,12 +311,12 @@ st.markdown(
         color: #FFFFFF !important;
     }
 
-    /* ── Area risposta ── */
-    [data-testid="stMarkdownContainer"] > div {
+    /* ── Area risposta (solo blocchi esplicitamente marcati) ── */
+    .sara-risposta {
         background: #FFFFFF;
         border-left: 4px solid #8B2061;
         border-radius: 0 6px 6px 0;
-        padding: 12px 16px;
+        padding: 14px 18px;
         box-shadow: 0 1px 4px rgba(0,0,0,0.08);
         margin-bottom: 8px;
     }
@@ -340,9 +353,11 @@ st.markdown(
 
 if not st.session_state.get("authenticated"):
     st.markdown(
-        '<h1 style="text-align:center;margin-bottom:0">🔮 Oracolo delle Polizze</h1>'
-        '<p style="text-align:center;color:#888;margin-top:4px">'
-        'Interroga i tuoi documenti assicurativi</p>',
+        '<div style="text-align:center;padding:16px 0 8px 0">'
+        '<img src="/app/static/logo.png" style="width:64px;height:64px;display:block;margin:0 auto 14px;">'
+        '<div style="font-size:2rem;font-weight:700;color:#8B2061;margin-bottom:6px">Oracolo delle Polizze</div>'
+        '<div style="color:#888;font-size:15px">Interroga i tuoi documenti assicurativi</div>'
+        '</div>',
         unsafe_allow_html=True,
     )
     st.divider()
@@ -372,6 +387,7 @@ if not st.session_state.get("authenticated"):
                     st.session_state["username"]      = _row["username"]
                     st.session_state["name"]          = _row["name"]
                     st.session_state["role"]          = _row.get("role", "impiegato")
+                    st.session_state["_open_sidebar"]  = True
                     st.rerun()
                 else:
                     st.error("🔑 Username o password non corretti.")
@@ -385,6 +401,27 @@ _uname      = st.session_state["username"]
 _name       = st.session_state["name"]
 _role       = st.session_state["role"]
 _role_label = ROLE_LABELS.get(_role, _role)
+
+# ── Forza sidebar aperta al primo render dopo il login ───────────────────────
+
+if st.session_state.pop("_open_sidebar", False):
+    _components.html(
+        """<script>
+        const tryOpen = () => {
+            const btn = window.parent.document.querySelector(
+                '[data-testid="stExpandSidebarButton"]');
+            const sidebar = window.parent.document.querySelector(
+                '[data-testid="stSidebar"]');
+            if (sidebar && sidebar.getAttribute('aria-expanded') === 'false' && btn) {
+                btn.click();
+            } else if (!sidebar) {
+                setTimeout(tryOpen, 250);
+            }
+        };
+        setTimeout(tryOpen, 400);
+        </script>""",
+        height=0,
+    )
 
 # ── Stato sessione ────────────────────────────────────────────────────────────
 
@@ -404,7 +441,13 @@ for _k, _v in _defaults.items():
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.title("🔮 Oracolo")
+    st.markdown(
+        '<div style="display:flex;align-items:center;gap:10px;padding:6px 0 2px 0">'
+        '<img src="/app/static/logo.png" style="width:36px;height:36px;">'
+        '<span style="font-size:1.4rem;font-weight:700;color:#8B2061">Oracolo</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     # ── Gestione Documenti ────────────────────────────────────────────────────
@@ -501,12 +544,15 @@ with st.sidebar:
 _col_title, _col_user = st.columns([5, 3])
 with _col_title:
     st.markdown(
-        '<h1 style="color:#8B2061;font-weight:700;margin-bottom:0">'
-        '🔮 Oracolo delle Polizze</h1>'
-        '<p style="color:#666;margin-top:6px;font-size:15px;line-height:1.5">'
+        '<div style="display:flex;align-items:center;gap:12px;margin-bottom:2px">'
+        '<img src="/app/static/logo.png" style="width:44px;height:44px;flex-shrink:0;">'
+        '<span style="font-size:2rem;font-weight:700;color:#8B2061;line-height:1.2">Oracolo delle Polizze</span>'
+        '</div>'
+        '<div style="color:#666;margin-top:8px;font-size:15px;line-height:1.5">'
         'Consulta i Contratti Generali di Assicurazione Sara.<br>'
         '<span style="font-size:13px;color:#999">'
-        'Le risposte si basano esclusivamente sui documenti caricati.</span></p>',
+        'Le risposte si basano esclusivamente sui documenti caricati.</span>'
+        '</div>',
         unsafe_allow_html=True,
     )
 with _col_user:
@@ -543,7 +589,7 @@ with st.form("query_form", clear_on_submit=False):
     )
 
 if st.session_state.is_loading:
-    st.info("⏳ L'Oracolo sta consultando i documenti… un momento.", icon="🔮")
+    st.info("⏳ L'Oracolo sta consultando i documenti… un momento.")
 
 # Fase 1 — salva domanda e avvia il ciclo di caricamento
 if submitted and domanda.strip() and not st.session_state.is_loading:
@@ -581,7 +627,7 @@ if st.session_state.last_answer:
         unsafe_allow_html=True,
     )
     st.markdown(
-        highlight_citations(st.session_state.last_answer),
+        f'<div class="sara-risposta">{highlight_citations(st.session_state.last_answer)}</div>',
         unsafe_allow_html=True,
     )
     st.markdown('<div style="margin-bottom:20px"></div>', unsafe_allow_html=True)
@@ -597,6 +643,6 @@ if _previous:
     for _item in _previous:
         with st.expander(f"💬 {_item['domanda']}"):
             st.markdown(
-                highlight_citations(_item["risposta"]),
+                f'<div class="sara-risposta">{highlight_citations(_item["risposta"])}</div>',
                 unsafe_allow_html=True,
             )
