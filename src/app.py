@@ -265,6 +265,7 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+    /* ── Nascondi elementi Streamlit ── */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -275,6 +276,61 @@ st.markdown(
     .viewerBadge_container__1QSob {display: none;}
     .styles_viewerBadge__1yB5_ {display: none;}
     a[href*="streamlit.io"] {display: none !important;}
+
+    /* ── Titolo principale ── */
+    h1 {
+        color: #8B2061 !important;
+        font-weight: 700;
+    }
+
+    /* ── Pulsanti primari (Chiedi, Upload, Accedi) ── */
+    .stButton > button[kind="primary"],
+    .stFormSubmitButton > button {
+        background-color: #F47920 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+    }
+    .stButton > button[kind="primary"]:hover,
+    .stFormSubmitButton > button:hover {
+        background-color: #d96a10 !important;
+        color: #FFFFFF !important;
+    }
+
+    /* ── Area risposta ── */
+    [data-testid="stMarkdownContainer"] > div {
+        background: #FFFFFF;
+        border-left: 4px solid #8B2061;
+        border-radius: 0 6px 6px 0;
+        padding: 12px 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        margin-bottom: 8px;
+    }
+
+    /* ── Tabelle nelle risposte ── */
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+    }
+    thead tr th {
+        background-color: #EDD6E8;
+        color: #1A1A2E;
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 2px solid #8B2061;
+    }
+    tbody tr:nth-child(even) {
+        background-color: #F7F7F9;
+    }
+    tbody tr:nth-child(odd) {
+        background-color: #FFFFFF;
+    }
+    tbody td {
+        padding: 7px 12px;
+        border-bottom: 1px solid #E8E8EC;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -442,14 +498,24 @@ with st.sidebar:
 
 # ── Area principale ───────────────────────────────────────────────────────────
 
-_col_title, _col_user = st.columns([6, 2])
+_col_title, _col_user = st.columns([5, 3])
 with _col_title:
-    st.title("Oracolo delle Polizze")
+    st.markdown(
+        '<h1 style="color:#8B2061;font-weight:700;margin-bottom:0">'
+        '🔮 Oracolo delle Polizze</h1>'
+        '<p style="color:#666;margin-top:6px;font-size:15px;line-height:1.5">'
+        'Consulta i Contratti Generali di Assicurazione Sara.<br>'
+        '<span style="font-size:13px;color:#999">'
+        'Le risposte si basano esclusivamente sui documenti caricati.</span></p>',
+        unsafe_allow_html=True,
+    )
 with _col_user:
     st.markdown(
-        f'<div style="text-align:right;padding-top:10px;line-height:1.5">'
-        f'👤 <b>{_name}</b><br>'
-        f'<span style="font-size:12px;color:#888">{_role_label}</span>'
+        f'<div style="background:#F7F7F9;border:1px solid #E8E8EC;border-radius:8px;'
+        f'padding:12px 16px;text-align:right;margin-top:8px">'
+        f'<div style="font-size:14px;font-weight:600;color:#1A1A2E">👤 {_name}</div>'
+        f'<div style="font-size:12px;color:#8B2061;font-weight:500;margin-top:3px">'
+        f'{_role_label}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -458,10 +524,7 @@ with _col_user:
             del st.session_state[_k]
         st.rerun()
 
-st.caption(
-    "Fai una domanda sulle tue polizze assicurative: "
-    "rispondo solo in base ai documenti caricati."
-)
+st.markdown('<div style="margin:12px 0 4px 0"></div>', unsafe_allow_html=True)
 st.divider()
 
 # ── Form ──────────────────────────────────────────────────────────────────────
@@ -512,11 +575,16 @@ if st.session_state.is_loading and st.session_state.pending_question:
 # ── Risposta corrente ─────────────────────────────────────────────────────────
 
 if st.session_state.last_answer:
-    st.subheader(f"❓ {st.session_state.last_question}")
+    st.markdown(
+        f'<h3 style="color:#8B2061;margin-top:28px;margin-bottom:10px">'
+        f'❓ {st.session_state.last_question}</h3>',
+        unsafe_allow_html=True,
+    )
     st.markdown(
         highlight_citations(st.session_state.last_answer),
         unsafe_allow_html=True,
     )
+    st.markdown('<div style="margin-bottom:20px"></div>', unsafe_allow_html=True)
     st.divider()
 
 # ── Cronologia ────────────────────────────────────────────────────────────────
@@ -524,6 +592,7 @@ if st.session_state.last_answer:
 _previous = st.session_state.history[1:] if st.session_state.history else []
 
 if _previous:
+    st.markdown('<div style="margin-top:12px"></div>', unsafe_allow_html=True)
     st.subheader("🕐 Ultime domande")
     for _item in _previous:
         with st.expander(f"💬 {_item['domanda']}"):
