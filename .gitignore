@@ -14,7 +14,7 @@ build/
 # Dati runtime — ephemeral su Render, usa disco persistente se necessario
 storage/
 documents/
-src/static/
+src/static/*.pdf
 logs/
 
 # Credenziali legacy (migrate a Supabase, ma per sicurezza non versionare)

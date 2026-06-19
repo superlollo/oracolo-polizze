@@ -29,6 +29,20 @@ LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 BUCKET = "cga-documents"
 
+CATEGORIES: dict[str, str] = {
+    "Auto e Moto":    "auto",
+    "Casa":           "casa",
+    "Vita e Persona": "vita",
+    "Viaggi":         "viaggi",
+}
+
+CATEGORY_ICONS: dict[str, str] = {
+    "Auto e Moto":    "🚗",
+    "Casa":           "🏠",
+    "Vita e Persona": "❤️",
+    "Viaggi":         "✈️",
+}
+
 SYSTEM_PROMPT = (
     "Sei l'Oracolo delle Polizze dell'Agenzia Sara Assicurazioni. "
     "Stai parlando con un agente assicurativo o un impiegato, NON con un cliente finale. "
@@ -98,11 +112,15 @@ def get_query_engine():
 
 # ── Gestione documenti ────────────────────────────────────────────────────────
 
-def _bytes_to_documents(pdf_bytes: bytes, filename: str) -> list[Document]:
+def _bytes_to_documents(pdf_bytes: bytes, filename: str,
+                         categoria: str = "") -> list[Document]:
     """Estrae testo pagina per pagina da bytes PDF con PyMuPDF."""
     docs = []
+    # filename può essere un path completo (es. auto/polizza.pdf): usiamo solo il basename
+    # come pdf temporaneo, ma salviamo il path completo come file_name per identificazione univoca
+    basename = Path(filename).name
     with tempfile.TemporaryDirectory() as tmp_dir:
-        pdf_path = Path(tmp_dir) / filename
+        pdf_path = Path(tmp_dir) / basename
         pdf_path.write_bytes(pdf_bytes)
         fitz_doc = fitz.open(str(pdf_path))
         for page_num in range(len(fitz_doc)):
@@ -113,15 +131,16 @@ def _bytes_to_documents(pdf_bytes: bytes, filename: str) -> list[Document]:
                     metadata={
                         "file_name":  filename,
                         "page_label": str(page_num + 1),
+                        "categoria":  categoria,
                     },
                 ))
         fitz_doc.close()
     return docs
 
 
-def add_pdf_to_index(pdf_bytes: bytes, filename: str) -> int:
+def add_pdf_to_index(pdf_bytes: bytes, filename: str, categoria: str = "") -> int:
     """Aggiunge un PDF all'indice pgvector in modo incrementale."""
-    docs = _bytes_to_documents(pdf_bytes, filename)
+    docs = _bytes_to_documents(pdf_bytes, filename, categoria)
     if not docs:
         return 0
     nodes = SPLITTER.get_nodes_from_documents(docs)
@@ -146,14 +165,51 @@ def remove_pdf_from_index(filename: str) -> int:
         engine.dispose()
 
 
-def _list_bucket_pdfs() -> list[dict]:
-    """Restituisce la lista dei PDF nel bucket Supabase, dal più recente al più vecchio."""
-    files = get_supabase().storage.from_(BUCKET).list() or []
-    return sorted(
-        [f for f in files if f["name"].lower().endswith(".pdf")],
-        key=lambda f: f.get("created_at") or "",
-        reverse=True,
-    )
+def _fetch_signed_urls(paths: list[str], expires_in: int = 3600) -> dict[str, str]:
+    """Genera signed URL per una lista di bucket paths in una sola chiamata API."""
+    if not paths:
+        return {}
+    try:
+        items = get_supabase().storage.from_(BUCKET).create_signed_urls(paths, expires_in) or []
+        return {
+            item.get("path", ""): item.get("signedURL") or item.get("signed_url") or "#"
+            for item in items
+            if item.get("path")
+        }
+    except Exception:
+        # fallback per bucket pubblici o versioni diverse di supabase-py
+        return {
+            p: get_supabase().storage.from_(BUCKET).get_public_url(p)
+            for p in paths
+        }
+
+
+def _list_all_pdfs() -> dict[str, list[dict]]:
+    """Lista PDF nel bucket suddivisi per categoria.
+
+    Chiavi del dict: etichette di CATEGORIES + "__uncat__" per i file senza prefisso.
+    Ogni voce include il campo aggiuntivo "bucket_path" con il path completo nel bucket.
+    """
+    sb = get_supabase()
+    result: dict[str, list[dict]] = {}
+
+    for label, prefix in CATEGORIES.items():
+        raw = sb.storage.from_(BUCKET).list(prefix) or []
+        files = []
+        for f in raw:
+            if f["name"].lower().endswith(".pdf"):
+                files.append({**f, "bucket_path": f"{prefix}/{f['name']}"})
+        result[label] = sorted(files, key=lambda f: f.get("created_at") or "", reverse=True)
+
+    # File alla radice del bucket (caricati prima della categorizzazione)
+    raw_root = sb.storage.from_(BUCKET).list("") or []
+    uncat = []
+    for f in raw_root:
+        if f["name"].lower().endswith(".pdf"):
+            uncat.append({**f, "bucket_path": f["name"]})
+    result["__uncat__"] = sorted(uncat, key=lambda f: f.get("created_at") or "", reverse=True)
+
+    return result
 
 
 # ── Log domande ───────────────────────────────────────────────────────────────
@@ -188,11 +244,14 @@ def load_query_log(n: int = 30) -> list[dict]:
 
 # ── Utilità UI ────────────────────────────────────────────────────────────────
 
-def _pdf_row(file_info: dict, can_delete: bool = False) -> None:
-    """Riga documento nel bucket: link pubblico Supabase + (opzionale) elimina."""
-    name = file_info["name"]
-    # get_public_url è solo costruzione di stringa, nessuna chiamata API
-    url  = get_supabase().storage.from_(BUCKET).get_public_url(name)
+def _pdf_row(file_info: dict, bucket_path: str, url: str,
+             can_delete: bool = False) -> None:
+    """Riga documento: link signed Supabase + (opzionale) elimina.
+
+    bucket_path è il path completo nel bucket (es. "auto/polizza.pdf" o "polizza.pdf").
+    url è la signed URL pre-generata da _fetch_signed_urls.
+    """
+    display_name = Path(bucket_path).name
 
     created_at = file_info.get("created_at", "")
     try:
@@ -212,31 +271,31 @@ def _pdf_row(file_info: dict, can_delete: bool = False) -> None:
             f'<a href="{url}" target="_blank" '
             'style="font-size:13px;line-height:1.35;word-break:break-word;'
             'overflow-wrap:anywhere;color:#1f77b4;text-decoration:none;">'
-            f'📄 {name}</a>'
+            f'📄 {display_name}</a>'
             f'<div style="font-size:11px;color:#999;margin-top:2px;">📅 {upload_dt}</div>',
             unsafe_allow_html=True,
         )
 
     if can_delete and col_btn:
         with col_btn:
-            if st.button("🗑️", key=f"del_{name}",
-                         help=f"Rimuovi {name}", use_container_width=True):
-                st.session_state.confirm_delete = name
+            if st.button("🗑️", key=f"del_{bucket_path}",
+                         help=f"Rimuovi {display_name}", use_container_width=True):
+                st.session_state.confirm_delete = bucket_path
                 st.rerun()
 
-    if st.session_state.get("confirm_delete") == name:
-        st.warning(f"Eliminare **{Path(name).stem}**?")
+    if st.session_state.get("confirm_delete") == bucket_path:
+        st.warning(f"Eliminare **{Path(bucket_path).stem}**?")
         c_yes, c_no = st.columns(2)
         with c_yes:
-            if st.button("✓ Sì", key=f"yes_{name}", use_container_width=True):
+            if st.button("✓ Sì", key=f"yes_{bucket_path}", use_container_width=True):
                 with st.spinner("Rimozione…"):
-                    get_supabase().storage.from_(BUCKET).remove([name])
-                    remove_pdf_from_index(name)
+                    get_supabase().storage.from_(BUCKET).remove([bucket_path])
+                    remove_pdf_from_index(bucket_path)
                 st.session_state.confirm_delete = None
-                st.toast(f"«{name}» eliminato", icon="🗑️")
+                st.toast(f"«{display_name}» eliminato", icon="🗑️")
                 st.rerun()
         with c_no:
-            if st.button("✗ No", key=f"no_{name}", use_container_width=True):
+            if st.button("✗ No", key=f"no_{bucket_path}", use_container_width=True):
                 st.session_state.confirm_delete = None
                 st.rerun()
 
@@ -247,7 +306,7 @@ def _pdf_row(file_info: dict, can_delete: bool = False) -> None:
 
 
 def highlight_citations(text: str) -> str:
-    pattern = r"(\*?\(?\*?[\w][\w\s\.\-]+\.pdf\*?[,\s]*(?:pag\.|p\.)\s*\d+\*?\)?)"
+    pattern = r"(\*?\(?\*?[\w][\w\s\.\-\/]+\.pdf\*?[,\s]*(?:pag\.|p\.)\s*\d+\*?\)?)"
     repl = (
         r'<span style="background:#fff3cd;padding:2px 6px;'
         r'border-radius:4px;font-size:.9em;">📄 \1</span>'
@@ -432,7 +491,7 @@ _defaults = {
     "is_loading":       False,
     "pending_question": None,
     "confirm_delete":   None,
-    "last_upload_key":  None,
+    "uploader_key":     0,
 }
 for _k, _v in _defaults.items():
     if _k not in st.session_state:
@@ -458,41 +517,83 @@ with st.sidebar:
         uploaded = st.file_uploader(
             "Carica un nuovo PDF",
             type="pdf",
-            help="Il documento viene caricato su Supabase e aggiunto all'indice.",
+            help="Seleziona il file, scegli la categoria e clicca «Carica».",
+            key=f"uploader_{st.session_state.uploader_key}",
+        )
+        _cat_label = st.selectbox(
+            "Categoria",
+            options=list(CATEGORIES.keys()),
+            key="upload_categoria",
+            disabled=uploaded is None,
         )
 
         if uploaded is not None:
-            _upl_key = f"{uploaded.name}_{uploaded.size}"
-            if _upl_key != st.session_state.last_upload_key:
-                _existing = {f["name"] for f in _list_bucket_pdfs()}
-                if uploaded.name in _existing:
-                    st.warning(f"**{uploaded.name}** è già presente.")
+            if st.button("⬆️ Carica documento", use_container_width=True, type="primary"):
+                _prefix = CATEGORIES[_cat_label]
+                _bucket_path = f"{_prefix}/{uploaded.name}"
+                _all_existing = _list_all_pdfs()
+                _existing_paths = {
+                    fi["bucket_path"]
+                    for files in _all_existing.values()
+                    for fi in files
+                }
+                if _bucket_path in _existing_paths:
+                    st.warning(f"**{uploaded.name}** è già presente in «{_cat_label}».")
                 else:
                     _pdf_bytes = uploaded.getvalue()
-                    with st.spinner(f"Upload e indicizzazione di «{uploaded.name}»…"):
+                    with st.spinner(f"Caricamento e indicizzazione di «{uploaded.name}»…"):
                         get_supabase().storage.from_(BUCKET).upload(
-                            path=uploaded.name,
+                            path=_bucket_path,
                             file=_pdf_bytes,
                             file_options={"content-type": "application/pdf"},
                         )
-                        n = add_pdf_to_index(_pdf_bytes, uploaded.name)
-                    st.session_state.last_upload_key = _upl_key
+                        n = add_pdf_to_index(_pdf_bytes, _bucket_path, categoria=_prefix)
+                    st.session_state.uploader_key += 1  # resetta il file uploader
                     st.toast(
-                        f"«{uploaded.name}» aggiunto — {n} pagine indicizzate",
+                        f"«{uploaded.name}» aggiunto in {_cat_label} — {n} pagine indicizzate",
                         icon="✅",
                     )
                     st.rerun()
-                st.session_state.last_upload_key = _upl_key
 
         st.divider()
 
     # — Lista documenti —
-    _pdf_files = _list_bucket_pdfs()
-    if _pdf_files:
-        for _fi in _pdf_files:
-            _pdf_row(_fi, can_delete=(_role == "admin"))
-    else:
-        st.caption("Nessun documento ancora. Carica un PDF qui sopra.")
+    _search = st.text_input(
+        "Cerca documento",
+        placeholder="🔍 Filtra per nome…",
+        label_visibility="collapsed",
+    )
+
+    _all_pdfs = _list_all_pdfs()
+
+    # Genera tutte le signed URL in un'unica chiamata batch
+    _all_paths = [fi["bucket_path"] for files in _all_pdfs.values() for fi in files]
+    _signed_urls = _fetch_signed_urls(_all_paths)
+
+    for _cat_label, _prefix in CATEGORIES.items():
+        _cat_files = _all_pdfs.get(_cat_label, [])
+        if _search:
+            _cat_files = [f for f in _cat_files if _search.lower() in f["name"].lower()]
+        _icon = CATEGORY_ICONS[_cat_label]
+        _count = len(_cat_files)
+        with st.expander(f"{_icon} {_cat_label}  ({_count})", expanded=False):
+            if _cat_files:
+                for _fi in _cat_files:
+                    _pdf_row(_fi, bucket_path=_fi["bucket_path"],
+                             url=_signed_urls.get(_fi["bucket_path"], "#"),
+                             can_delete=(_role == "admin"))
+            else:
+                st.caption("Nessun documento." if not _search else "Nessun risultato.")
+
+    _uncat_files = _all_pdfs.get("__uncat__", [])
+    if _search:
+        _uncat_files = [f for f in _uncat_files if _search.lower() in f["name"].lower()]
+    if _uncat_files:
+        with st.expander(f"📁 Non categorizzati  ({len(_uncat_files)})", expanded=False):
+            for _fi in _uncat_files:
+                _pdf_row(_fi, bucket_path=_fi["bucket_path"],
+                         url=_signed_urls.get(_fi["bucket_path"], "#"),
+                         can_delete=(_role == "admin"))
 
     st.divider()
 
