@@ -974,6 +974,29 @@ st.markdown(
 # ── Login gate ────────────────────────────────────────────────────────────────
 
 if not st.session_state.get("authenticated"):
+
+    # ── Fase intermedia: credenziali ok, rendering app in corso ──────────────
+    # Il browser riceve questa schermata e la mostra MENTRE il prossimo rerun
+    # (pesante: query sidebar, indice RAG) è in esecuzione lato server.
+    if st.session_state.get("_logging_in"):
+        st.markdown(
+            f'<div style="display:flex;flex-direction:column;align-items:center;'
+            f'justify-content:center;min-height:65vh;gap:20px;text-align:center">'
+            f'<img src="{_LOGO_SRC}" style="width:72px;height:72px">'
+            f'<div style="font-size:1.6rem;font-weight:700;color:#8B2061">'
+            f'Oracolo delle Polizze</div>'
+            f'<div style="color:#999;font-size:14px">Caricamento in corso…</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        with st.spinner(""):
+            pass
+        st.session_state["authenticated"]  = True
+        st.session_state["_open_sidebar"]  = True
+        st.session_state.pop("_logging_in", None)
+        st.rerun()
+
+    # ── Form di login ─────────────────────────────────────────────────────────
     st.markdown(
         f'<div style="text-align:center;padding:16px 0 8px 0">'
         f'<img src="{_LOGO_SRC}" style="width:64px;height:64px;display:block;margin:0 auto 14px;">'
@@ -1005,11 +1028,11 @@ if not st.session_state.get("authenticated"):
                     _pwd_input.encode("utf-8"),
                     _row["password_hash"].encode("utf-8"),
                 ):
-                    st.session_state["authenticated"] = True
-                    st.session_state["username"]      = _row["username"]
-                    st.session_state["name"]          = _row["name"]
-                    st.session_state["role"]          = _row.get("role", "impiegato")
-                    st.session_state["_open_sidebar"]  = True
+                    # Fase 1: salva i dati utente e attiva la schermata di caricamento
+                    st.session_state["username"] = _row["username"]
+                    st.session_state["name"]     = _row["name"]
+                    st.session_state["role"]     = _row.get("role", "impiegato")
+                    st.session_state["_logging_in"] = True
                     st.rerun()
                 else:
                     st.error("🔑 Username o password non corretti.")
@@ -1205,7 +1228,7 @@ with _col_title:
         '<span style="font-size:2rem;font-weight:700;color:#8B2061;line-height:1.2">Oracolo delle Polizze</span>'
         '</div>'
         '<div style="color:#666;margin-top:8px;font-size:15px;line-height:1.5">'
-        'Consulta i Contratti Generali di Assicurazione Sara.<br>'
+        'Consulta i Documenti di Sara Assicurazioni.<br>'
         '<span style="font-size:13px;color:#999">'
         'Le risposte si basano esclusivamente sui documenti caricati.</span>'
         '</div>',
