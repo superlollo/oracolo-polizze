@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import re
@@ -26,6 +27,13 @@ BASE_DIR = Path(__file__).parent.parent
 load_dotenv(BASE_DIR / ".env", override=True)
 LOGS_DIR = BASE_DIR / "logs"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Logo incorporato come base64 — evita dipendenze da static serving
+_LOGO_PATH = BASE_DIR / "static" / "logo.png"
+_LOGO_SRC = (
+    "data:image/png;base64,"
+    + base64.b64encode(_LOGO_PATH.read_bytes()).decode()
+)
 
 BUCKET = "cga-documents"
 
@@ -412,8 +420,8 @@ st.markdown(
 
 if not st.session_state.get("authenticated"):
     st.markdown(
-        '<div style="text-align:center;padding:16px 0 8px 0">'
-        '<img src="/app/static/logo.png" style="width:64px;height:64px;display:block;margin:0 auto 14px;">'
+        f'<div style="text-align:center;padding:16px 0 8px 0">'
+        f'<img src="{_LOGO_SRC}" style="width:64px;height:64px;display:block;margin:0 auto 14px;">'
         '<div style="font-size:2rem;font-weight:700;color:#8B2061;margin-bottom:6px">Oracolo delle Polizze</div>'
         '<div style="color:#888;font-size:15px">Interroga i tuoi documenti assicurativi</div>'
         '</div>',
@@ -501,8 +509,8 @@ for _k, _v in _defaults.items():
 
 with st.sidebar:
     st.markdown(
-        '<div style="display:flex;align-items:center;gap:10px;padding:6px 0 2px 0">'
-        '<img src="/app/static/logo.png" style="width:36px;height:36px;">'
+        f'<div style="display:flex;align-items:center;gap:10px;padding:6px 0 2px 0">'
+        f'<img src="{_LOGO_SRC}" style="width:36px;height:36px;">'
         '<span style="font-size:1.4rem;font-weight:700;color:#8B2061">Oracolo</span>'
         '</div>',
         unsafe_allow_html=True,
@@ -645,8 +653,8 @@ with st.sidebar:
 _col_title, _col_user = st.columns([5, 3])
 with _col_title:
     st.markdown(
-        '<div style="display:flex;align-items:center;gap:12px;margin-bottom:2px">'
-        '<img src="/app/static/logo.png" style="width:44px;height:44px;flex-shrink:0;">'
+        f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:2px">'
+        f'<img src="{_LOGO_SRC}" style="width:44px;height:44px;flex-shrink:0;">'
         '<span style="font-size:2rem;font-weight:700;color:#8B2061;line-height:1.2">Oracolo delle Polizze</span>'
         '</div>'
         '<div style="color:#666;margin-top:8px;font-size:15px;line-height:1.5">'
