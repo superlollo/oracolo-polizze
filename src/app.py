@@ -318,7 +318,7 @@ def highlight_citations(text: str) -> str:
 
 st.set_page_config(
     page_title="Oracolo delle Polizze",
-    page_icon=_PILImage.open(Path(__file__).parent / "static" / "logo.png"),
+    page_icon=_PILImage.open(Path(__file__).parent.parent / "static" / "logo.png"),
     layout="wide",
     initial_sidebar_state="expanded",
 )
